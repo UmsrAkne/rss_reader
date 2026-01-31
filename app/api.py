@@ -1,8 +1,16 @@
 # app.py
 import sqlite3
+
 from fastapi import FastAPI
 from fastapi import Query
+from fastapi import HTTPException
+from pydantic import BaseModel, HttpUrl
 
+
+class FeedSourceCreate(BaseModel):
+    name: str
+    url: HttpUrl
+    check_interval_minutes: int = 60
 
 app = FastAPI()
 
@@ -76,3 +84,27 @@ def sources(since: str = Query(...)):
         }
         for r in rows
     ]
+
+@app.post("/sources")
+def create_source(source: FeedSourceCreate):
+    con = sqlite3.connect("../data/feeds.db")
+    cur = con.cursor()
+
+    try:
+        cur.execute(
+            """
+            INSERT INTO feed_sources (name, url, check_interval_minutes)
+            VALUES (?, ?, ?)
+            """,
+            (source.name, str(source.url), source.check_interval_minutes)
+        )
+        con.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Source with this URL already exists"
+        )
+    finally:
+        con.close()
+
+    return {"status": "ok"}
