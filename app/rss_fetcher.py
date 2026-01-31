@@ -1,8 +1,25 @@
 import feedparser
 import sqlite3
+import logging
+import os
+from datetime import datetime
 
 from typing import Iterable
 from app.models import FeedEntry, convert_entry
+
+# ログの設定
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
+LOG_FILE = os.path.join(LOG_DIR, "rss_fetcher.log")
+
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    encoding="utf-8"
+)
 
 def insert_feed_entries(
         con: sqlite3.Connection,
@@ -38,7 +55,11 @@ def get_feed_sources(con: sqlite3.Connection) -> list[tuple[int, str]]:
     """)
     return cr.fetchall()
 
-conn = sqlite3.connect("../data/feeds.db")
+# データベースのパス設定
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+DB_PATH = os.path.join(BASE_DIR, "data", "feeds.db")
+
+conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
 
 cur.execute("""
@@ -76,9 +97,20 @@ VALUES
 
 sources = get_feed_sources(conn)
 
+logging.info("RSS fetch started.")
+
 for source_id, url in sources:
-    feed = feedparser.parse(url)
-    entries = [convert_entry(e) for e in feed.entries]
-    insert_feed_entries(conn, entries, source_id)
+    try:
+        feed = feedparser.parse(url)
+        if feed.get('bozo_exception'):
+             logging.warning(f"Problem fetching {url}: {feed.bozo_exception}")
+        
+        entries = [convert_entry(e) for e in feed.entries]
+        insert_feed_entries(conn, entries, source_id)
+        logging.info(f"Successfully fetched {len(entries)} entries from {url}")
+    except Exception as e:
+        logging.error(f"Error processing {url}: {str(e)}")
+
+logging.info("RSS fetch completed.")
 
 conn.close()
