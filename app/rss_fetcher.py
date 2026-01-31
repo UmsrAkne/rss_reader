@@ -88,13 +88,6 @@ CREATE TABLE IF NOT EXISTS feed_sources (
 );
 """)
 
-cur.execute("""
-INSERT OR IGNORE INTO feed_sources (name, url)
-VALUES
-    ('Yahoo Business', 'https://news.yahoo.co.jp/rss/categories/business.xml'),
-    ('Yahoo World',    'https://news.yahoo.co.jp/rss/categories/world.xml');
-""")
-
 sources = get_feed_sources(conn)
 
 logging.info("RSS fetch started.")
