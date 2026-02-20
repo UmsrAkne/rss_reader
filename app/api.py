@@ -1,5 +1,6 @@
 # app.py
 import sqlite3
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi import Query
@@ -14,13 +15,15 @@ class FeedSourceCreate(BaseModel):
 
 app = FastAPI()
 
+DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
+
 @app.get("/ping")
 def ping():
     return {"status": "ok!"}
 
 @app.get("/feeds")
 def feeds(since: str = Query(...)):
-    con = sqlite3.connect("../data/feeds.db")
+    con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     cur = con.cursor()
 
@@ -51,7 +54,7 @@ def feeds(since: str = Query(...)):
 
 @app.get("/sources")
 def sources(since: str = Query(...)):
-    con = sqlite3.connect("../data/feeds.db")
+    con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     cur = con.cursor()
 
@@ -89,7 +92,7 @@ def sources(since: str = Query(...)):
 
 @app.post("/sources")
 def create_source(source: FeedSourceCreate):
-    con = sqlite3.connect("../data/feeds.db")
+    con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
 
     try:

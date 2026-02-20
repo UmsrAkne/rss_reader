@@ -2,6 +2,7 @@ import feedparser
 import sqlite3
 import logging
 import os
+from pathlib import Path
 from datetime import datetime
 
 from typing import Iterable
@@ -56,8 +57,7 @@ def get_feed_sources(con: sqlite3.Connection) -> list[tuple[int, str]]:
     return cr.fetchall()
 
 # データベースのパス設定
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data", "feeds.db")
+DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
 
 conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
