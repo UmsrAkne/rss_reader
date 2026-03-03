@@ -3,7 +3,7 @@ import sqlite3
 import logging
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from typing import Iterable
 from app.models import FeedEntry, convert_entry
@@ -47,14 +47,21 @@ def insert_feed_entries(
     con.executemany(sql, data)
     con.commit()
 
-def get_feed_sources(con: sqlite3.Connection) -> list[tuple[int, str]]:
+def get_feed_sources(con: sqlite3.Connection) -> list[tuple[int, str, int, str]]:
     cr = con.cursor()
     cr.execute("""
-        SELECT id, url
+        SELECT id, url, check_interval_minutes, last_fetched_at
         FROM feed_sources
         WHERE enabled = 1
     """)
     return cr.fetchall()
+
+def update_last_fetched(con: sqlite3.Connection, source_id: int) -> None:
+    con.execute(
+        "UPDATE feed_sources SET last_fetched_at = datetime('now') WHERE id = ?",
+        (source_id,)
+    )
+    con.commit()
 
 # データベースのパス設定
 DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
@@ -93,15 +100,31 @@ sources = get_feed_sources(conn)
 
 logging.info("RSS fetch started.")
 
-for source_id, url in sources:
+now = datetime.now(timezone.utc)
+
+for source_id, url, interval_minutes, last_fetched_at in sources:
     try:
+        # 経過時間チェック
+        last_dt = datetime.fromisoformat(last_fetched_at).replace(tzinfo=timezone.utc)
+        elapsed_minutes = (now - last_dt).total_seconds() / 60
+
+        # -1 は誤差吸収用のバッファ
+        if elapsed_minutes < (interval_minutes - 1):
+            logging.info(f"Skipped {url} (interval not reached)")
+            continue
+
         feed = feedparser.parse(url)
+
         if feed.get('bozo_exception'):
-             logging.warning(f"Problem fetching {url}: {feed.bozo_exception}")
-        
+            logging.warning(f"Problem fetching {url}: {feed.bozo_exception}")
+
         entries = [convert_entry(e) for e in feed.entries]
         insert_feed_entries(conn, entries, source_id)
+
+        update_last_fetched(conn, source_id)
+
         logging.info(f"Successfully fetched {len(entries)} entries from {url}")
+
     except Exception as e:
         logging.error(f"Error processing {url}: {str(e)}")
 
