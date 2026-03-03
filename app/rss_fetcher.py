@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS feed_sources (
     enabled INTEGER NOT NULL DEFAULT 1,
     check_interval_minutes INTEGER NOT NULL DEFAULT 60,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """)
 
