@@ -37,7 +37,7 @@ def insert_feed_entries(
         (
             e.title,
             e.link,
-            e.published.isoformat() if e.published else None,
+            e.published.isoformat() if e.published else datetime.now(timezone.utc).isoformat(),
             e.summary,
             source_id
         )
