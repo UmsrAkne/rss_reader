@@ -37,7 +37,7 @@ def insert_feed_entries(
         (
             e.title,
             e.link,
-            e.published.isoformat() if e.published else None,
+            e.published.isoformat() if e.published else datetime.now(timezone.utc).isoformat(),
             e.summary,
             source_id
         )
@@ -104,8 +104,15 @@ now = datetime.now(timezone.utc)
 
 for source_id, url, interval_minutes, last_fetched_at in sources:
     try:
+        # last_fetched_at が空であるケース（新しく追加したソースなど）に対応
+        if last_fetched_at:
+            # SQLiteの "YYYY-MM-DD HH:MM:SS" 形式を fromisoformat で読めるように T を入れる
+            last_dt = datetime.fromisoformat(last_fetched_at.replace(" ", "T")).replace(tzinfo=timezone.utc)
+        else:
+            # 1970年とか、とりあえず「絶対に更新が必要なほど古い日時」にする
+            last_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
         # 経過時間チェック
-        last_dt = datetime.fromisoformat(last_fetched_at).replace(tzinfo=timezone.utc)
         elapsed_minutes = (now - last_dt).total_seconds() / 60
 
         # -1 は誤差吸収用のバッファ
