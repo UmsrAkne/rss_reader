@@ -2,7 +2,7 @@ services:
   api:
     build: .
     # WORKDIRを /workspace に変更
-    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+    command: uvicorn app.api:app --host 0.0.0.0 --port 17000
     environment:
       - PYTHONPATH=/workspace
       - DATABASE_URL=/workspace/data/feeds.db
@@ -10,7 +10,7 @@ services:
     volumes:
       - db_data:/workspace/data # /workspace/data にDBを保存
     ports:
-      - "8000:8000"
+      - "17000:17000"
 
   fetcher:
     build: .

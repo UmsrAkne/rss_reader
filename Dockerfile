@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # ポート開放（API用）
-EXPOSE 8000
+EXPOSE 17000
