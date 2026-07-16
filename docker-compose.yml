@@ -1,0 +1,26 @@
+services:
+  api:
+    build: .
+    # WORKDIRを /workspace に変更
+    command: uvicorn app.api:app --host 0.0.0.0 --port 17000
+    environment:
+      - PYTHONPATH=/workspace
+      - DATABASE_URL=/workspace/data/feeds.db
+
+    volumes:
+      - db_data:/workspace/data # /workspace/data にDBを保存
+    ports:
+      - "17000:17000"
+
+  fetcher:
+    build: .
+    command: python app/rss_fetcher.py  # スクリプトを常駐ループ
+    environment:
+      - PYTHONPATH=/workspace
+      - DATABASE_URL=/workspace/data/feeds.db
+
+    volumes:
+      - db_data:/workspace/data
+
+volumes:
+  db_data:

@@ -64,7 +64,17 @@ def update_last_fetched(con: sqlite3.Connection, source_id: int) -> None:
     con.commit()
 
 # データベースのパス設定
-DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
+# 環境変数 "DATABASE_URL" があればそれを使い、無ければ今までのローカルパスを使う
+DB_PATH_STR = os.getenv("DATABASE_URL")
+
+if DB_PATH_STR:
+    DB_PATH = Path(DB_PATH_STR)
+else:
+    # 今までのローカルでのパスをフォールバックにしとく
+    DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
+
+# フォルダが存在しない場合に作る
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
