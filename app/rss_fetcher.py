@@ -88,6 +88,9 @@ CREATE TABLE IF NOT EXISTS feed_entries (
     published TEXT,
     summary TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    is_ng_word INTEGER NOT NULL DEFAULT 0,
+    ng_checked_version INTEGER,
+    is_read INTEGER NOT NULL DEFAULT 0,
     UNIQUE(source_id, link),
     FOREIGN KEY(source_id) REFERENCES feed_sources(id)
 );
@@ -104,6 +107,13 @@ CREATE TABLE IF NOT EXISTS feed_sources (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS ng_words (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    word TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))) -- ('%s', 'now') でユニックスエポック秒になる。
 """)
 
 sources = get_feed_sources(conn)
