@@ -25,24 +25,36 @@ logging.basicConfig(
 def insert_feed_entries(
         con: sqlite3.Connection,
         entry_list: Iterable[FeedEntry],
-        source_id: int
+        source_id: int,
+        ng_words: list[str],
+        ng_checked_version: int
 ) -> None:
     sql = """
           INSERT OR IGNORE INTO feed_entries
-    (title, link, published, summary, source_id)
-    VALUES (?, ?, ?, ?, ?) \
+    (title, link, published, summary, source_id, is_ng_word, ng_checked_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?) \
           """
 
-    data = [
-        (
+    data = []
+    for e in entry_list:
+        is_ng_word = 0
+        # タイトルとサマリーに対してNGワードチェックを行う
+        title = e.title if e.title else ""
+        summary = e.summary if e.summary else ""
+        for word in ng_words:
+            if word in title or word in summary:
+                is_ng_word = 1
+                break
+
+        data.append((
             e.title,
             e.link,
             e.published.isoformat() if e.published else datetime.now(timezone.utc).isoformat(),
             e.summary,
-            source_id
-        )
-        for e in entry_list
-    ]
+            source_id,
+            is_ng_word,
+            ng_checked_version
+        ))
 
     con.executemany(sql, data)
     con.commit()
@@ -133,6 +145,7 @@ CREATE TABLE IF NOT EXISTS ng_words (
 """)
 
 sources = get_feed_sources(conn)
+ng_words, ng_version = get_latest_ng_words_and_version(conn)
 
 logging.info("RSS fetch started.")
 
@@ -162,7 +175,7 @@ for source_id, url, interval_minutes, last_fetched_at in sources:
             logging.warning(f"Problem fetching {url}: {feed.bozo_exception}")
 
         entries = [convert_entry(e) for e in feed.entries]
-        insert_feed_entries(conn, entries, source_id)
+        insert_feed_entries(conn, entries, source_id, ng_words, ng_version)
 
         update_last_fetched(conn, source_id)
 
