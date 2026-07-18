@@ -63,6 +63,22 @@ def update_last_fetched(con: sqlite3.Connection, source_id: int) -> None:
     )
     con.commit()
 
+def get_latest_ng_words_and_version(con: sqlite3.Connection) -> tuple[list[str], int]:
+    """
+    NGワードのリストと、その中での最新の更新日時（バージョンとして使用）を返す。
+    """
+    cr = con.cursor()
+    # ワード一覧を取得
+    cr.execute("SELECT word FROM ng_words")
+    words = [row[0] for row in cr.fetchall()]
+
+    # 最新の created_at をバージョンとして取得
+    cr.execute("SELECT MAX(created_at) FROM ng_words")
+    row = cr.fetchone()
+    version = row[0] if row and row[0] is not None else 0
+
+    return words, version
+
 # データベースのパス設定
 # 環境変数 "DATABASE_URL" があればそれを使い、無ければ今までのローカルパスを使う
 DB_PATH_STR = os.getenv("DATABASE_URL")
