@@ -34,7 +34,7 @@ def feeds(since: str = Query(...)):
 
     rows = cur.execute(
         """
-        SELECT id, title, summary, link, published, created_at, source_id
+        SELECT id, title, summary, link, published, created_at, source_id, is_ng_word, ng_checked_version
         FROM feed_entries
         WHERE created_at >= ?
         ORDER BY created_at ASC
@@ -53,6 +53,8 @@ def feeds(since: str = Query(...)):
             "published": r["published"],
             "created_at": r["created_at"],
             "source_id": r["source_id"],
+            "is_ng_word": bool(r["is_ng_word"]),
+            "ng_checked_version": r["ng_checked_version"],
         }
         for r in rows
     ]
