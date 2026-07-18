@@ -2,6 +2,8 @@ import feedparser
 import sqlite3
 import logging
 import os
+import time
+import schedule
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -91,99 +93,113 @@ def get_latest_ng_words_and_version(con: sqlite3.Connection) -> tuple[list[str],
 
     return words, version
 
-# データベースのパス設定
-# 環境変数 "DATABASE_URL" があればそれを使い、無ければ今までのローカルパスを使う
-DB_PATH_STR = os.getenv("DATABASE_URL")
+def fetch_rss():
+    # データベースのパス設定
+    # 環境変数 "DATABASE_URL" があればそれを使い、無ければ今までのローカルパスを使う
+    db_path_str = os.getenv("DATABASE_URL")
 
-if DB_PATH_STR:
-    DB_PATH = Path(DB_PATH_STR)
-else:
-    # 今までのローカルでのパスをフォールバックにしとく
-    DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
+    if db_path_str:
+        db_path = Path(db_path_str)
+    else:
+        # 今までのローカルでのパスをフォールバックにしとく
+        db_path = Path.home() / "rss_reader" / "data" / "feeds.db"
 
-# フォルダが存在しない場合に作る
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # フォルダが存在しない場合に作る
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
-conn = sqlite3.connect(DB_PATH)
-cur = conn.cursor()
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS feed_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    link TEXT NOT NULL,
-    published TEXT,
-    summary TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    is_ng_word INTEGER NOT NULL DEFAULT 0,
-    ng_checked_version INTEGER,
-    is_read INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(source_id, link),
-    FOREIGN KEY(source_id) REFERENCES feed_sources(id)
-);
-""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS feed_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        link TEXT NOT NULL,
+        published TEXT,
+        summary TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        is_ng_word INTEGER NOT NULL DEFAULT 0,
+        ng_checked_version INTEGER,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(source_id, link),
+        FOREIGN KEY(source_id) REFERENCES feed_sources(id)
+    );
+    """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS feed_sources (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    url TEXT NOT NULL UNIQUE,
-    enabled INTEGER NOT NULL DEFAULT 1,
-    check_interval_minutes INTEGER NOT NULL DEFAULT 60,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS feed_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        check_interval_minutes INTEGER NOT NULL DEFAULT 60,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS ng_words (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    word TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))) -- ('%s', 'now') でユニックスエポック秒になる。
-""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS ng_words (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))) -- ('%s', 'now') でユニックスエポック秒になる。
+    """)
 
-sources = get_feed_sources(conn)
-ng_words, ng_version = get_latest_ng_words_and_version(conn)
+    sources = get_feed_sources(conn)
+    ng_words, ng_version = get_latest_ng_words_and_version(conn)
 
-logging.info("RSS fetch started.")
+    logging.info("RSS fetch started.")
 
-now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
 
-for source_id, url, interval_minutes, last_fetched_at in sources:
-    try:
-        # last_fetched_at が空であるケース（新しく追加したソースなど）に対応
-        if last_fetched_at:
-            # SQLiteの "YYYY-MM-DD HH:MM:SS" 形式を fromisoformat で読めるように T を入れる
-            last_dt = datetime.fromisoformat(last_fetched_at.replace(" ", "T")).replace(tzinfo=timezone.utc)
-        else:
-            # 1970年とか、とりあえず「絶対に更新が必要なほど古い日時」にする
-            last_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    for source_id, url, interval_minutes, last_fetched_at in sources:
+        try:
+            # last_fetched_at が空であるケース（新しく追加したソースなど）に対応
+            if last_fetched_at:
+                # SQLiteの "YYYY-MM-DD HH:MM:SS" 形式を fromisoformat で読めるように T を入れる
+                last_dt = datetime.fromisoformat(last_fetched_at.replace(" ", "T")).replace(tzinfo=timezone.utc)
+            else:
+                # 1970年とか、とりあえず「絶対に更新が必要なほど古い日時」にする
+                last_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
-        # 経過時間チェック
-        elapsed_minutes = (now - last_dt).total_seconds() / 60
+            # 経過時間チェック
+            elapsed_minutes = (now - last_dt).total_seconds() / 60
 
-        # -1 は誤差吸収用のバッファ
-        if elapsed_minutes < (interval_minutes - 1):
-            logging.info(f"Skipped {url} (interval not reached)")
-            continue
+            # -1 は誤差吸収用のバッファ
+            if elapsed_minutes < (interval_minutes - 1):
+                logging.info(f"Skipped {url} (interval not reached)")
+                continue
 
-        feed = feedparser.parse(url)
+            feed = feedparser.parse(url)
 
-        if feed.get('bozo_exception'):
-            logging.warning(f"Problem fetching {url}: {feed.bozo_exception}")
+            if feed.get('bozo_exception'):
+                logging.warning(f"Problem fetching {url}: {feed.bozo_exception}")
 
-        entries = [convert_entry(e) for e in feed.entries]
-        insert_feed_entries(conn, entries, source_id, ng_words, ng_version)
+            entries = [convert_entry(e) for e in feed.entries]
+            insert_feed_entries(conn, entries, source_id, ng_words, ng_version)
 
-        update_last_fetched(conn, source_id)
+            update_last_fetched(conn, source_id)
 
-        logging.info(f"Successfully fetched {len(entries)} entries from {url}")
+            logging.info(f"Successfully fetched {len(entries)} entries from {url}")
 
-    except Exception as e:
-        logging.error(f"Error processing {url}: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error processing {url}: {str(e)}")
 
-logging.info("RSS fetch completed.")
+    logging.info("RSS fetch completed.")
 
-conn.close()
+    conn.close()
+
+if __name__ == "__main__":
+    # 初回実行
+    fetch_rss()
+
+    # 15分毎に実行
+    schedule.every(15).minutes.do(fetch_rss)
+
+    logging.info("Scheduled RSS fetcher every 15 minutes.")
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
