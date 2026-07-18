@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi import Query
 from fastapi import HTTPException
 from pydantic import BaseModel, HttpUrl
+from typing import List
 
 
 class FeedSourceCreate(BaseModel):
@@ -16,6 +17,10 @@ class FeedSourceCreate(BaseModel):
 
 class NGWordCreate(BaseModel):
     word: str
+
+
+class FeedReadUpdate(BaseModel):
+    ids: List[int]
 
 
 app = FastAPI()
@@ -34,7 +39,7 @@ def feeds(since: str = Query(...)):
 
     rows = cur.execute(
         """
-        SELECT id, title, summary, link, published, created_at, source_id
+        SELECT id, title, summary, link, published, created_at, source_id, is_read, is_ng_word, ng_checked_version
         FROM feed_entries
         WHERE created_at >= ?
         ORDER BY created_at ASC
@@ -53,6 +58,9 @@ def feeds(since: str = Query(...)):
             "published": r["published"],
             "created_at": r["created_at"],
             "source_id": r["source_id"],
+            "is_read": r["is_read"],
+            "is_ng_word": bool(r["is_ng_word"]),
+            "ng_checked_version": r["ng_checked_version"],
         }
         for r in rows
     ]
@@ -160,10 +168,31 @@ def create_ng_word(ng_word: NGWordCreate):
             (ng_word.word,)
         )
         con.commit()
-    except sqlite3.IntegrityError:
+    finally:
+        con.close()
+
+    return {"status": "ok"}
+
+
+@app.post("/feeds/read")
+def mark_feeds_as_read(update: FeedReadUpdate):
+    if not update.ids:
+        return {"status": "ok", "message": "No IDs provided"}
+
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+
+    try:
+        placeholders = ",".join("?" for _ in update.ids)
+        cur.execute(
+            f"UPDATE feed_entries SET is_read = 1 WHERE id IN ({placeholders})",
+            update.ids
+        )
+        con.commit()
+    except Exception as e:
         raise HTTPException(
-            status_code=409,
-            detail="NG word already exists"
+            status_code=500,
+            detail=f"Database error: {str(e)}"
         )
     finally:
         con.close()
