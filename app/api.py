@@ -13,6 +13,11 @@ class FeedSourceCreate(BaseModel):
     url: HttpUrl
     check_interval_minutes: int = 60
 
+
+class NGWordCreate(BaseModel):
+    word: str
+
+
 app = FastAPI()
 
 DB_PATH = Path.home() / "rss_reader" / "data" / "feeds.db"
@@ -108,6 +113,57 @@ def create_source(source: FeedSourceCreate):
         raise HTTPException(
             status_code=409,
             detail="Source with this URL already exists"
+        )
+    finally:
+        con.close()
+
+    return {"status": "ok"}
+
+
+@app.get("/ng_words")
+def get_ng_words():
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+
+    rows = cur.execute(
+        """
+        SELECT id, word, created_at
+        FROM ng_words
+        ORDER BY created_at DESC
+        """
+    ).fetchall()
+
+    con.close()
+
+    return [
+        {
+            "id": r["id"],
+            "word": r["word"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
+
+
+@app.post("/ng_words")
+def create_ng_word(ng_word: NGWordCreate):
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+
+    try:
+        cur.execute(
+            """
+            INSERT INTO ng_words (word)
+            VALUES (?)
+            """,
+            (ng_word.word,)
+        )
+        con.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="NG word already exists"
         )
     finally:
         con.close()
